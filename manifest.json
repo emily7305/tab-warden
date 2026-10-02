@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Warden",
+  "version": "1.0.0",
+  "description": "Hibernates idle tabs, shows tab memory use, and freezes window sessions for later.",
+  "permissions": ["tabs", "alarms", "storage", "processes"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Tab Warden",
+    "default_popup": "popup.html"
+  }
+}
