@@ -123,6 +123,13 @@
 
   .row.hibernated .title { color: var(--muted); }
 
+  .wide {
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
   button {
     flex: none;
     padding: 3px 8px;
@@ -202,6 +209,7 @@
   <section>
     <h2><span>Tabs</span><span id="tab-summary" class="hint"></span></h2>
     <ul id="tab-list" class="list"></ul>
+    <button id="hibernate-all" class="wide" type="button">Hibernate all</button>
     <p id="tab-status" class="status" role="status"></p>
   </section>
 

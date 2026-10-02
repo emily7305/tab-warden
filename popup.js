@@ -6,6 +6,7 @@ const MINUTE_MS = 60 * 1000;
 const tabSummary = document.getElementById('tab-summary');
 const tabList = document.getElementById('tab-list');
 const tabStatus = document.getElementById('tab-status');
+const hibernateAllButton = document.getElementById('hibernate-all');
 const freezeButton = document.getElementById('freeze');
 const freezeStatus = document.getElementById('freeze-status');
 const vaultList = document.getElementById('vault-list');
@@ -57,6 +58,10 @@ function compareTabs(a, b) {
   return (a.lastAccessed ?? Infinity) - (b.lastAccessed ?? Infinity);
 }
 
+function canHibernate(tab) {
+  return !tab.active && !tab.pinned && !tab.audible && !tab.discarded;
+}
+
 function buildFavicon(url) {
   if (!url) return el('span', 'favicon');
   const img = el('img', 'favicon');
@@ -87,7 +92,7 @@ async function refreshTabs() {
     const hibernated = tabs.filter((tab) => tab.discarded).length;
     tabList.replaceChildren(...tabs.sort(compareTabs).map((tab) => buildTabRow(tab, now)));
     tabSummary.textContent = `${tabs.length} open, ${hibernated} hibernated`;
-    showStatus(tabStatus, '');
+    hibernateAllButton.disabled = !tabs.some(canHibernate);
   } catch (err) {
     showStatus(tabStatus, `Could not read tabs: ${err.message}`, true);
   }
@@ -101,11 +106,28 @@ function scheduleTabRefresh() {
 }
 
 async function discardTab(id) {
+  showStatus(tabStatus, '');
   try {
     await chrome.tabs.discard(id);
   } catch {
     showStatus(tabStatus, 'That tab could not be discarded.', true);
     return;
+  }
+  refreshTabs();
+}
+
+async function hibernateAll() {
+  hibernateAllButton.disabled = true;
+  showStatus(tabStatus, '');
+  try {
+    const tabs = (await chrome.tabs.query({})).filter(canHibernate);
+    const results = await Promise.allSettled(tabs.map((tab) => chrome.tabs.discard(tab.id)));
+    // discard() resolves with undefined instead of rejecting when Chrome declines a tab.
+    const done = results.filter((r) => r.status === 'fulfilled' && r.value).length;
+    const missed = tabs.length - done;
+    showStatus(tabStatus, `Hibernated ${plural(done, 'tab')}.${missed ? ` ${missed} could not be hibernated.` : ''}`, missed > 0);
+  } catch (err) {
+    showStatus(tabStatus, `Hibernate failed: ${err.message}`, true);
   }
   refreshTabs();
 }
@@ -189,6 +211,7 @@ async function renderVaults() {
   }
 }
 
+hibernateAllButton.addEventListener('click', hibernateAll);
 freezeButton.addEventListener('click', freezeSession);
 
 chrome.storage.onChanged.addListener((changes, area) => {

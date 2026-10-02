@@ -3,7 +3,7 @@
 A small Chrome extension that keeps tab-heavy browsing under control.
 
 - **Hibernation**: every 5 minutes, tabs you haven't looked at in 15 minutes are discarded to free memory. They reload when you click them. Active, pinned and audible tabs are never touched.
-- **Tabs**: the popup lists open tabs with how long each has been idle, longest first. Any tab except the active one can be discarded with one click.
+- **Tabs**: the popup lists open tabs with how long each has been idle, longest first. Tabs can be hibernated one at a time or all at once.
 - **Freeze Session**: saves every tab in the current window to a vault and closes them, leaving a single blank tab. Vaults can be restored or deleted later from the popup.
 
 ## Install
@@ -60,6 +60,8 @@ Click the Tab Warden icon. The **Tabs** section lists every open tab:
 - **Active** is the tab you're on right now.
 
 Click **Discard** on a row to put that tab to sleep right away, without waiting for the 15 minutes.
+
+Click **Hibernate all** to put every tab to sleep at once. The same tabs as above are left alone: the one you're on in each window, pinned tabs, and tabs playing sound.
 
 ### Freeze Session
 
