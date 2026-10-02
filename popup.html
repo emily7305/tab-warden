@@ -83,7 +83,7 @@
     list-style: none;
   }
 
-  #memory-list {
+  #tab-list {
     max-height: 220px;
     overflow-y: auto;
   }
@@ -114,27 +114,14 @@
     text-overflow: ellipsis;
   }
 
-  .mb {
+  .state {
     flex: none;
+    font-size: 12px;
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
 
-  .badge {
-    flex: none;
-    padding: 1px 6px;
-    border-radius: 999px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--warn);
-    background: var(--warn-bg);
-  }
-
-  .shared {
-    flex: none;
-    font-size: 10px;
-    color: var(--muted);
-  }
+  .row.hibernated .title { color: var(--muted); }
 
   button {
     flex: none;
@@ -213,10 +200,9 @@
   </header>
 
   <section>
-    <h2><span>Memory</span><span class="hint">Process memory</span></h2>
-    <p id="memory-note" class="note" hidden></p>
-    <ul id="memory-list" class="list"></ul>
-    <p id="memory-status" class="status" role="status"></p>
+    <h2><span>Tabs</span><span id="tab-summary" class="hint"></span></h2>
+    <ul id="tab-list" class="list"></ul>
+    <p id="tab-status" class="status" role="status"></p>
   </section>
 
   <section>

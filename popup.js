@@ -1,12 +1,11 @@
-const LEAK_THRESHOLD_MB = 400;
-const REFRESH_MS = 3000;
+const REFRESH_MS = 5000;
 const VAULT_KEY = 'vaults';
 const PREVIEW_TITLES = 3;
-const BYTES_PER_MB = 1024 * 1024;
+const MINUTE_MS = 60 * 1000;
 
-const memoryNote = document.getElementById('memory-note');
-const memoryList = document.getElementById('memory-list');
-const memoryStatus = document.getElementById('memory-status');
+const tabSummary = document.getElementById('tab-summary');
+const tabList = document.getElementById('tab-list');
+const tabStatus = document.getElementById('tab-status');
 const freezeButton = document.getElementById('freeze');
 const freezeStatus = document.getElementById('freeze-status');
 const vaultList = document.getElementById('vault-list');
@@ -43,36 +42,19 @@ async function currentWindowId() {
   return win.id;
 }
 
-function callProcesses(method, ...args) {
-  return new Promise((resolve, reject) => {
-    chrome.processes[method](...args, (result) => {
-      const err = chrome.runtime.lastError;
-      if (err) reject(new Error(err.message));
-      else resolve(result);
-    });
-  });
+function describeState(tab, now) {
+  if (tab.active) return 'Active';
+  if (tab.discarded) return 'Hibernated';
+  if (typeof tab.lastAccessed !== 'number') return '';
+  const min = Math.floor((now - tab.lastAccessed) / MINUTE_MS);
+  if (min < 1) return 'Just now';
+  return min < 60 ? `${min} min idle` : `${Math.floor(min / 60)} h idle`;
 }
 
-async function readTabMemory() {
-  const tabs = await chrome.tabs.query({ discarded: false });
-  const pids = await Promise.all(
-    tabs.map((tab) => callProcesses('getProcessIdForTab', tab.id).catch(() => -1)),
-  );
-  const uniquePids = [...new Set(pids.filter((pid) => pid > 0))];
-  if (!uniquePids.length) return [];
-
-  const processes = await callProcesses('getProcessInfo', uniquePids, true);
-  const tabsPerPid = new Map();
-  for (const pid of pids) tabsPerPid.set(pid, (tabsPerPid.get(pid) ?? 0) + 1);
-
-  return tabs
-    .flatMap((tab, i) => {
-      const info = processes[pids[i]];
-      if (info?.privateMemory === undefined) return [];
-      const mb = Math.round((info.privateMemory / BYTES_PER_MB) * 10) / 10;
-      return [{ tab, mb, sharedBy: tabsPerPid.get(pids[i]) }];
-    })
-    .sort((a, b) => b.mb - a.mb);
+// Longest-idle awake tabs first, since those are the ones worth discarding by hand.
+function compareTabs(a, b) {
+  if (a.discarded !== b.discarded) return a.discarded ? 1 : -1;
+  return (a.lastAccessed ?? Infinity) - (b.lastAccessed ?? Infinity);
 }
 
 function buildFavicon(url) {
@@ -84,41 +66,37 @@ function buildFavicon(url) {
   return img;
 }
 
-function buildMemoryRow({ tab, mb, sharedBy }) {
-  const row = el('li', 'row');
+function buildTabRow(tab, now) {
+  const row = el('li', tab.discarded ? 'row hibernated' : 'row');
   const label = tab.title || tab.url || 'Untitled';
   const title = el('span', 'title', label);
   title.title = label;
-  row.append(buildFavicon(tab.favIconUrl), title);
-
-  if (mb > LEAK_THRESHOLD_MB) row.append(el('span', 'badge', 'Memory Leak'));
-  if (sharedBy > 1) {
-    const shared = el('span', 'shared', `shared ×${sharedBy}`);
-    shared.title = `This process hosts ${sharedBy} tabs. The figure covers all of them.`;
-    row.append(shared);
-  }
 
   const discard = button('Discard', () => discardTab(tab.id));
-  discard.disabled = tab.active;
+  discard.disabled = tab.active || tab.discarded;
   if (tab.active) discard.title = 'The active tab cannot be discarded';
-  row.append(el('span', 'mb', `${mb.toFixed(1)} MB`), discard);
+
+  row.append(buildFavicon(tab.favIconUrl), title, el('span', 'state', describeState(tab, now)), discard);
   return row;
 }
 
-async function refreshMemory() {
+async function refreshTabs() {
   try {
-    const rows = await readTabMemory();
-    memoryList.replaceChildren(...rows.map(buildMemoryRow));
-    showStatus(memoryStatus, rows.length ? '' : 'No active tab processes to show.');
+    const tabs = await chrome.tabs.query({});
+    const now = Date.now();
+    const hibernated = tabs.filter((tab) => tab.discarded).length;
+    tabList.replaceChildren(...tabs.sort(compareTabs).map((tab) => buildTabRow(tab, now)));
+    tabSummary.textContent = `${tabs.length} open, ${hibernated} hibernated`;
+    showStatus(tabStatus, '');
   } catch (err) {
-    showStatus(memoryStatus, `Could not read memory use: ${err.message}`, true);
+    showStatus(tabStatus, `Could not read tabs: ${err.message}`, true);
   }
 }
 
-function scheduleMemoryRefresh() {
+function scheduleTabRefresh() {
   refreshTimer = setTimeout(async () => {
-    await refreshMemory();
-    scheduleMemoryRefresh();
+    await refreshTabs();
+    scheduleTabRefresh();
   }, REFRESH_MS);
 }
 
@@ -126,21 +104,10 @@ async function discardTab(id) {
   try {
     await chrome.tabs.discard(id);
   } catch {
-    showStatus(memoryStatus, 'That tab could not be discarded.', true);
+    showStatus(tabStatus, 'That tab could not be discarded.', true);
     return;
   }
-  refreshMemory();
-}
-
-function startMemoryPanel() {
-  // chrome.processes exists only on the Dev channel; on Stable the namespace is missing even with the permission declared.
-  if (typeof chrome.processes === 'undefined') {
-    memoryNote.textContent = 'Live memory tracking needs the Chrome Dev channel. Tab hibernation and sessions work normally.';
-    memoryNote.hidden = false;
-    return;
-  }
-  refreshMemory().then(scheduleMemoryRefresh);
-  window.addEventListener('pagehide', () => clearTimeout(refreshTimer));
+  refreshTabs();
 }
 
 async function freezeSession() {
@@ -228,5 +195,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && VAULT_KEY in changes) renderVaults();
 });
 
-startMemoryPanel();
+refreshTabs().then(scheduleTabRefresh);
+window.addEventListener('pagehide', () => clearTimeout(refreshTimer));
 renderVaults();
